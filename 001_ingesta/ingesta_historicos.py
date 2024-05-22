@@ -1,4 +1,4 @@
-# Descarga de zip históricos V2 CLOUD
+# Descarga de zip históricos V3 CLOUD
 
 from google.cloud import storage
 import requests
@@ -31,17 +31,23 @@ if response.status_code == 200:
         # Obtener la URL del recurso
         resource_url = resource["url"]
         resource_created = resource["created"]
-        # Obtener el contenido del archivo
-        file_content_response = requests.get(resource_url)
-        if file_content_response.status_code == 200:
-            # Subir el contenido del archivo al bucket de GCS
-            file_content = file_content_response.content
-            # Usamos el nombre del archivo como nombre del blob
-            blob = bucket.blob(resource_url.split("/")[-1])
-            blob.upload_from_file(io.BytesIO(file_content))
-            print(f"Archivo subido: {resource_url.split('/')[-1]}")
-            print(f"Fecha de creación: {resource_created}")
+        # Nombre del archivo
+        filename = resource_url.split("/")[-1]
+
+        # Verificar si el archivo ya existe en el bucket
+        blob = bucket.blob(filename)
+        if not blob.exists():
+            # Obtener el contenido del archivo
+            file_content_response = requests.get(resource_url)
+            if file_content_response.status_code == 200:
+                # Subir el contenido del archivo al bucket de GCS
+                file_content = file_content_response.content
+                blob.upload_from_file(io.BytesIO(file_content))
+                print(f"Archivo subido: {filename}")
+                print(f"Fecha de creación: {resource_created}")
+            else:
+                print(f"No se pudo obtener el contenido del archivo desde {resource_url}")
         else:
-            print(f"No se pudo obtener el contenido del archivo desde {resource_url}")
+            print(f"El archivo {filename} ya existe en el bucket, se omitirá su descarga.")
 else:
     print("Error al obtener los datos de la API")
