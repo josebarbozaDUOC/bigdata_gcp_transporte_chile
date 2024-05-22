@@ -1,6 +1,6 @@
-# Descomprime los zip históricos V1 CLOUD
+# Descomprime los zip históricos V2 CLOUD
 
-import subprocess
+import subprocesshttps://github.com/josebarbozaDUOC/bigdata_gcp_transporte_chile/blob/main/001_ingesta/ingesta_historicos_unzip.py
 from google.cloud import storage
 
 # Configura las credenciales y el proyecto de GCP
@@ -21,10 +21,11 @@ for blob in blobs:
     archivo_comprimido = f'gs://{bucket_origen.name}/{blob.name}'
 
     # Ruta de destino para el archivo descomprimido
-    archivo_descomprimido = f'gs://{bucket_destino}/{blob.name.replace(".zip", "")}'
+    directorio_descomprimido = blob.name.replace(".zip", "")
+    archivo_descomprimido = f'gs://{bucket_destino.name}/{directorio_descomprimido}/'
 
     # Verifica si el archivo descomprimido ya existe en el bucket de destino
-    prefix = blob.name.replace(".zip", "") + "/"
+    prefix = directorio_descomprimido + "/"
     existe_en_destino = False
     for blob_destino in bucket_destino.list_blobs(prefix=prefix):
         existe_en_destino = True
@@ -32,7 +33,7 @@ for blob in blobs:
 
     if not existe_en_destino:
         # Descomprime el archivo utilizando gsutil
-        comando = f'gsutil cp {archivo_comprimido} . && unzip {blob.name} -d {blob.name.replace(".zip", "")} && gsutil cp -r {blob.name.replace(".zip", "")} {archivo_descomprimido}'
+        comando = f'gsutil cp {archivo_comprimido} . && unzip {blob.name} -d {directorio_descomprimido} && gsutil cp -r {directorio_descomprimido} {archivo_descomprimido}'
         subprocess.run(comando, shell=True, check=True)
         print(f'Archivo {blob.name} descomprimido en {archivo_descomprimido}')
     else:
