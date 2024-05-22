@@ -1,6 +1,6 @@
-# Descomprime los zip históricos V2 CLOUD
+# Descomprime los zip históricos V3 CLOUD
 
-import subprocesshttps://github.com/josebarbozaDUOC/bigdata_gcp_transporte_chile/blob/main/001_ingesta/ingesta_historicos_unzip.py
+import subprocess
 from google.cloud import storage
 
 # Configura las credenciales y el proyecto de GCP
@@ -33,7 +33,7 @@ for blob in blobs:
 
     if not existe_en_destino:
         # Descomprime el archivo utilizando gsutil
-        comando = f'gsutil cp {archivo_comprimido} . && unzip {blob.name} -d {directorio_descomprimido} && gsutil cp -r {directorio_descomprimido} {archivo_descomprimido}'
+        comando = f'gsutil cp {archivo_comprimido} . && unzip -oq {blob.name} -d {directorio_descomprimido} && gsutil cp -r {directorio_descomprimido} {archivo_descomprimido}'
         subprocess.run(comando, shell=True, check=True)
         print(f'Archivo {blob.name} descomprimido en {archivo_descomprimido}')
     else:
