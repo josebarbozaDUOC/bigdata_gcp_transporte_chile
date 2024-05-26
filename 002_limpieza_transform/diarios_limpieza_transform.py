@@ -11,7 +11,7 @@ client = storage.Client()
 
 # Bucket de origen y destino
 bucket_origen_name = 'bcrudo_diarios'
-bucket_destino_name = 'bclean_diario'
+bucket_destino_name = 'bclean_diarios'
 
 # Obtén los blobs (archivos) del bucket de origen
 bucket_origen = client.get_bucket(bucket_origen_name)
