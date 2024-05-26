@@ -1,9 +1,10 @@
-# CÓDIGO PARA TRATAR UN JSON COMPLEJO (DATOS DIARIOS) V2 CLOUD
+# CÓDIGO PARA TRATAR UN JSON COMPLEJO (DATOS DIARIOS) V3 CLOUD
 import pandas as pd
 import json
 from google.cloud import storage
 from datetime import datetime
 import os
+import sys
 
 # Configuración del cliente de Google Cloud Storage
 storage_client = storage.Client()
@@ -14,7 +15,7 @@ def process_json(bucket_name, source_blob_name, destination_bucket_name):
     json_data = blob.download_as_string()
     data = json.loads(json_data)
     
-    # Variables de ejemplo (esto debería adaptarse según tu JSON y tus necesidades)
+    # Extraer el nombre del archivo sin la extensión para usarlo como route_id
     route_id = os.path.splitext(os.path.basename(source_blob_name))[0]
     path_id_ida = str(route_id) + 'I'
     path_id_regreso = str(route_id) + 'R'
@@ -100,6 +101,6 @@ def process_all_files(source_bucket_name, destination_bucket_name):
             process_json(source_bucket_name, blob.name, destination_bucket_name)
 
 if __name__ == '__main__':
-    source_bucket = 'bcrudo_diarios'
-    destination_bucket = 'bclean_diario'
+    source_bucket = sys.argv[1]
+    destination_bucket = sys.argv[2]
     process_all_files(source_bucket, destination_bucket)
