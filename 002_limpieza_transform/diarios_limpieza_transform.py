@@ -18,7 +18,6 @@ bucket_destino_name = 'bclean_diarios'
 bucket_origen = client.bucket(bucket_origen_name)
 bucket_destino = client.bucket(bucket_destino_name)
 
-# ruta: bcrudo_diarios/2024_05_26
 today = datetime.now().strftime('%Y_%m_%d')
 #prefix = f'{today}/'
 prefix = f'2024_05_26/'
@@ -35,8 +34,6 @@ for blob in blobs:
     print(f'entramos al loop con: {blob_name}')
     
     if blob.name.endswith('.json'):
-        print(f'Es un json?: {blob_name}')
-
         # Ruta completa del archivo json
         ruta_json = f'gs://{bucket_origen.name}/{blob_name}'
         
@@ -68,7 +65,18 @@ for blob in blobs:
                 agency_timezone = 'America/Santiago'
                 ida_destino     = ''
                 regreso_destino = ''
-                
+
+                # inicializar dataframes vacios
+                df_negocio = pd.DataFrame()
+                df_ida = pd.DataFrame()
+                horarios_ida = pd.DataFrame()
+                path_ida = pd.DataFrame()
+                paraderos_ida = pd.DataFrame()
+                df_regreso = pd.DataFrame()
+                horarios_regreso = pd.DataFrame()
+                path_regreso = pd.DataFrame()
+                paraderos_regreso = pd.DataFrame()
+
                 # Procesamiento y comprobación de datos
                 if 'negocio' in data and data['negocio']:
                     df_negocio = pd.json_normalize(data['negocio'])
@@ -173,3 +181,4 @@ for blob in blobs:
             print(f'El archivo {ruta_carpeta_destino} ya existe en el bucket de destino, omitiendo...')
     else:
         print(f'El archivo {blob_name} no termina en .json, omitiendo...')
+
