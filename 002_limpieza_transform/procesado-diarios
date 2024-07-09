@@ -1,0 +1,180 @@
+# procesado diarios pubsub
+# Creador: Sebastián Aróstica
+
+import functions_framework
+from google.cloud import storage
+import json
+import csv
+import io
+import os
+import logging
+from datetime import datetime
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+
+@functions_framework.cloud_event
+def process_bucket_files(request):
+    try:
+        storage_client = storage.Client()
+        source_bucket = storage_client.bucket('bcrudo_diarios-v2')
+        destination_bucket = storage_client.bucket('diarios_csv_2')
+
+        # Listar todos los blobs en la carpeta '2024_07_04/'
+        # today = '2024_07_04'
+        today = datetime.now().strftime('%Y_%m_%d')
+        blobs = source_bucket.list_blobs(prefix=f'{today}/')
+
+        processed_files = 0
+        error_files = 0
+
+        for blob in blobs:
+            if blob.name.endswith('.json'):
+                try:
+                    logging.info(f"Procesando archivo: {blob.name}")
+                    
+                    # Leer el contenido del archivo JSON
+                    json_content = blob.download_as_text()
+                    
+                    # Procesar el archivo
+                    csv_content = process_file(json_content)
+                    
+                    # Crear el nombre del archivo CSV de salida
+                    output_filename = os.path.splitext(os.path.basename(blob.name))[0] + '.csv'
+                    #output_path = '2024_07_04_procesados/' + output_filename
+                    output_path = f'{today}_procesados/' + output_filename
+                    
+                    # Subir el archivo CSV procesado al bucket de destino
+                    output_blob = destination_bucket.blob(output_path)
+                    output_blob.upload_from_string(csv_content, content_type='text/csv')
+                    
+                    logging.info(f"Archivo procesado y guardado: {output_path}")
+                    processed_files += 1
+                except Exception as e:
+                    logging.error(f"Error procesando el archivo {blob.name}: {str(e)}")
+                    error_files += 1
+
+        return f'Procesamiento completado. Archivos procesados: {processed_files}. Archivos con error: {error_files}'
+    except Exception as e:
+        logging.error(f"Error general en la función: {str(e)}")
+        return f'Error en el procesamiento: {str(e)}', 500
+
+def process_file(json_content):
+    try:
+        data = json.loads(json_content)
+
+        fieldnames = [
+            'negocio_id', 'negocio_nombre', 'negocio_color', 'negocio_url',
+            'ida_id', 'ida_horarios_tipoDia', 'ida_horarios_inicio', 'ida_horarios_fin',
+            'ida_path_lat', 'ida_path_lng', 'ida_paraderos_id', 'ida_paraderos_cod',
+            'ida_paraderos_num', 'ida_paraderos_pos_lat', 'ida_paraderos_pos_lng',
+            'ida_paraderos_name', 'ida_paraderos_comuna', 'ida_paraderos_type',
+            'ida_paraderos_stop_id', 'ida_paraderos_stop_coordenadaX',
+            'ida_paraderos_stop_coordenadaY', 'ida_paraderos_eje', 'ida_paraderos_codSimt',
+            'ida_paraderos_distancia', 'ida_paraderos_servicios_id', 'ida_paraderos_servicios_cod',
+            'ida_paraderos_servicios_destino', 'ida_paraderos_servicios_orden',
+            'ida_paraderos_servicios_color', 'ida_paraderos_servicios_negocio_nombre',
+            'ida_paraderos_servicios_negocio_color', 'ida_paraderos_servicios_recorrido_destino',
+            'ida_paraderos_servicios_paradas', 'ida_paraderos_servicios_shapes',
+            'ida_paraderos_servicios_itinerario', 'ida_paraderos_servicios_codigo',
+            'regreso_id', 'regreso_horarios_tipoDia', 'regreso_horarios_inicio', 'regreso_horarios_fin',
+            'regreso_path_lat', 'regreso_path_lng', 'regreso_paraderos_id', 'regreso_paraderos_cod',
+            'regreso_paraderos_num', 'regreso_paraderos_pos_lat', 'regreso_paraderos_pos_lng',
+            'regreso_paraderos_name', 'regreso_paraderos_comuna', 'regreso_paraderos_type',
+            'regreso_paraderos_stop_id', 'regreso_paraderos_stop_coordenadaX',
+            'regreso_paraderos_stop_coordenadaY', 'regreso_paraderos_eje', 'regreso_paraderos_codSimt',
+            'regreso_paraderos_distancia', 'regreso_paraderos_servicios_id', 'regreso_paraderos_servicios_cod',
+            'regreso_paraderos_servicios_destino', 'regreso_paraderos_servicios_orden',
+            'regreso_paraderos_servicios_color', 'regreso_paraderos_servicios_negocio_nombre',
+            'regreso_paraderos_servicios_negocio_color', 'regreso_paraderos_servicios_recorrido_destino',
+            'regreso_paraderos_servicios_paradas', 'regreso_paraderos_servicios_shapes',
+            'regreso_paraderos_servicios_itinerario', 'regreso_paraderos_servicios_codigo'
+        ]
+
+        negocio = data.get('negocio', {})
+
+        def procesar_paraderos(paraderos, tipo):
+            paraderos_dict = {}
+            for paradero in paraderos:
+                paradero_id = paradero.get('id')
+                if paradero_id not in paraderos_dict:
+                    paraderos_dict[paradero_id] = {
+                        f'{tipo}_paraderos_id': paradero.get('id'),
+                        f'{tipo}_paraderos_cod': paradero.get('cod'),
+                        f'{tipo}_paraderos_num': paradero.get('num'),
+                        f'{tipo}_paraderos_pos_lat': paradero.get('pos', [None, None])[0],
+                        f'{tipo}_paraderos_pos_lng': paradero.get('pos', [None, None])[1],
+                        f'{tipo}_paraderos_name': paradero.get('name'),
+                        f'{tipo}_paraderos_comuna': paradero.get('comuna'),
+                        f'{tipo}_paraderos_type': paradero.get('type'),
+                        f'{tipo}_paraderos_stop_id': paradero.get('stop', {}).get('stopId'),
+                        f'{tipo}_paraderos_stop_coordenadaX': paradero.get('stop', {}).get('stopCoordenadaX'),
+                        f'{tipo}_paraderos_stop_coordenadaY': paradero.get('stop', {}).get('stopCoordenadaY'),
+                        f'{tipo}_paraderos_eje': paradero.get('eje'),
+                        f'{tipo}_paraderos_codSimt': paradero.get('codSimt'),
+                        f'{tipo}_paraderos_distancia': paradero.get('distancia'),
+                    }
+                    # Tomamos solo el primer servicio para cada paradero
+                    if paradero.get('servicios'):
+                        servicio = paradero['servicios'][0]
+                        paraderos_dict[paradero_id].update({
+                            f'{tipo}_paraderos_servicios_id': servicio.get('id'),
+                            f'{tipo}_paraderos_servicios_cod': servicio.get('cod'),
+                            f'{tipo}_paraderos_servicios_destino': servicio.get('destino'),
+                            f'{tipo}_paraderos_servicios_orden': servicio.get('orden'),
+                            f'{tipo}_paraderos_servicios_color': servicio.get('color'),
+                            f'{tipo}_paraderos_servicios_negocio_nombre': servicio.get('negocio', {}).get('nombre'),
+                            f'{tipo}_paraderos_servicios_negocio_color': servicio.get('negocio', {}).get('color'),
+                            f'{tipo}_paraderos_servicios_recorrido_destino': servicio.get('recorrido', {}).get('destino'),
+                            f'{tipo}_paraderos_servicios_paradas': servicio.get('paradas'),
+                            f'{tipo}_paraderos_servicios_shapes': servicio.get('shapes'),
+                            f'{tipo}_paraderos_servicios_itinerario': servicio.get('itinerario'),
+                            f'{tipo}_paraderos_servicios_codigo': servicio.get('codigo')
+                        })
+            return paraderos_dict
+
+        def procesar_recorrido(recorrido, tipo):
+            paraderos_dict = procesar_paraderos(recorrido.get('paraderos', []), tipo)
+            for paradero in paraderos_dict.values():
+                paradero.update({
+                    f'{tipo}_id': recorrido.get('id'),
+                    f'{tipo}_horarios_tipoDia': recorrido.get('horarios', [{}])[0].get('tipoDia'),
+                    f'{tipo}_horarios_inicio': recorrido.get('horarios', [{}])[0].get('inicio'),
+                    f'{tipo}_horarios_fin': recorrido.get('horarios', [{}])[0].get('fin'),
+                    f'{tipo}_path_lat': recorrido.get('path', [[None, None]])[0][0],
+                    f'{tipo}_path_lng': recorrido.get('path', [[None, None]])[0][1],
+                })
+            return paraderos_dict
+
+        # Procesar información de ida y regreso
+        ida_dict = procesar_recorrido(data.get('ida', {}), 'ida')
+        regreso_dict = procesar_recorrido(data.get('regreso', {}), 'regreso')
+
+        # Combinar datos de ida y regreso
+        combined_data = {}
+        for i, (ida_id, ida_data) in enumerate(ida_dict.items()):
+            regreso_id = list(regreso_dict.keys())[i] if i < len(regreso_dict) else None
+            regreso_data = regreso_dict.get(regreso_id, {})
+            
+            combined_row = {
+                'negocio_id': negocio.get('id'),
+                'negocio_nombre': negocio.get('nombre'),
+                'negocio_color': negocio.get('color'),
+                'negocio_url': negocio.get('url'),
+            }
+            combined_row.update(ida_data)
+            combined_row.update(regreso_data)
+            combined_data[i] = combined_row
+
+        # Crear CSV en memoria
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for fila in combined_data.values():
+            fila_filtrada = {k: v for k, v in fila.items() if k in fieldnames}
+            writer.writerow(fila_filtrada)
+
+        return output.getvalue()
+    except Exception as e:
+        logging.error(f"Error procesando el contenido del archivo: {str(e)}")
+        raise
