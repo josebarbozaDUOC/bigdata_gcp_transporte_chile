@@ -1,7 +1,8 @@
-# procesado diarios pubsub
+# procesado diarios pubsub, activa flujo Limpieza_diarios dataprep
 # Creador: Sebastián Aróstica
 
 import functions_framework
+import requests  # llamar a la API de Clouddataprep
 from google.cloud import storage
 import json
 import csv
@@ -12,6 +13,13 @@ from datetime import datetime
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
+
+# Configuración del proyecto y Dataprep
+PROJECT_ID = "bdtransportechile-v2"
+LOCATION = "us-central1"  # Ajusta esto si tu ubicación es diferente
+DATAPREP_FLOW_NAME = "Limpieza_diarios"
+DATAPREP_FLOW_ID = "2111925"  # ID del flujo extraído de la URL
+YOUR_ACCESS_TOKEN = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbklkIjoiZWUyZWFkNzgtNDlmNi00ZjgyLWE4YmItMGU5MjM3NTM3YzFhIiwiaWF0IjoxNzIwNDk1OTkxLCJhdWQiOiJ0cmlmYWN0YSIsImlzcyI6ImRhdGFwcmVwLWFwaS1hY2Nlc3MtdG9rZW5AdHJpZmFjdGEtZ2Nsb3VkLXByb2QuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJzdWIiOiJkYXRhcHJlcC1hcGktYWNjZXNzLXRva2VuQHRyaWZhY3RhLWdjbG91ZC1wcm9kLmlhbS5nc2VydmljZWFjY291bnQuY29tIn0.WdTek4vY7bXOhgOWNbkhw30WrxBB6BPktdK1ZAxDg5sBdQ47N3oEAQmzAv1NNM13h3K4jmiWIxsivPqlFSvXgcW5lc80Jx-q4-w2BJiSTrB2jddo7-YLwRMM_mMxm04N59BCLbW2I3x8lXGPUgbvuv1sVhoZC5jXisumeJtUWP0dAyk_DaekoIh4hT3EOgynce9WxlPQVjVWCOz1FE5qp8sMh8h913PbsEI42xFwxLvOi8-pwKQN1EZr5KQ7LBYsJQpZY9BEKkC62vHOSL6suVtMI9gk5oHmSVPhc6ztA2oHm_0wlsvFMJ0VEb4BWJXVHDbEa-rlRQGtYiK5WQxgiA'
 
 @functions_framework.cloud_event
 def process_bucket_files(request):
@@ -54,7 +62,15 @@ def process_bucket_files(request):
                     logging.error(f"Error procesando el archivo {blob.name}: {str(e)}")
                     error_files += 1
 
-        return f'Procesamiento completado. Archivos procesados: {processed_files}. Archivos con error: {error_files}'
+        # Después de procesar todos los archivos, ejecuta el flujo de Dataprep
+        flow_run_id = run_dataprep_flow()
+        if flow_run_id:
+            return f'Procesamiento completado. Archivos procesados: {processed_files}. Archivos con error: {error_files}. Flujo de Dataprep iniciado con ID: {flow_run_id}'
+        else:
+            return f'Procesamiento completado, pero hubo un error al iniciar el flujo de Dataprep.'
+
+        #return f'Procesamiento completado. Archivos procesados: {processed_files}. Archivos con error: {error_files}'
+
     except Exception as e:
         logging.error(f"Error general en la función: {str(e)}")
         return f'Error en el procesamiento: {str(e)}', 500
@@ -175,6 +191,50 @@ def process_file(json_content):
             writer.writerow(fila_filtrada)
 
         return output.getvalue()
+    except Exception as e:
+        logging.error(f"Error procesando el contenido del archivo: {str(e)}")
+        raise
+
+def run_dataprep_flow():
+    """
+    Ejecuta el flujo de Dataprep especificado usando la API oficial de Cloud Dataprep.
+    """
+    try:
+        # URL de la API de Cloud Dataprep para ejecutar un flujo
+        url = f"https://api.clouddataprep.com/v4/flows/{FLOW_ID}/run"
+
+        # Configurar los headers necesarios
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {YOUR_ACCESS_TOKEN}"  # Reemplaza esto con tu token de acceso real
+        }
+
+        # Datos para la ejecución del flujo (puedes ajustar según sea necesario)
+        data = {
+            "runParameters": {
+                "overrides": {
+                    "data": []  # Aquí puedes añadir parámetros si es necesario
+                }
+            },
+            "execution": "photon"  # O "dataflow" si prefieres usar Google Dataflow
+        }
+
+        # Hacer la solicitud POST para ejecutar el flujo
+        response = requests.post(url, headers=headers, json=data)
+
+        if response.status_code == 201:
+            flow_run = response.json()
+            logging.info(f"Flujo de Dataprep iniciado exitosamente. Flow Run ID: {flow_run['id']}")
+            return flow_run['id']
+        else:
+            logging.error(f"Error al iniciar el flujo de Dataprep. Código de estado: {response.status_code}")
+            logging.error(f"Respuesta: {response.text}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Error al ejecutar el flujo de Dataprep: {str(e)}")
+        raisee()
     except Exception as e:
         logging.error(f"Error procesando el contenido del archivo: {str(e)}")
         raise
