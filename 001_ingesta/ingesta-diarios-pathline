@@ -1,0 +1,85 @@
+import json
+import pandas as pd
+import requests
+from urllib.parse import quote
+from google.cloud import storage
+import functions_framework
+
+# Inicializar el cliente de Google Cloud Storage
+storage_client = storage.Client()
+bucket_name = 'path_diarios'
+
+# Función para obtener los números de recorridos
+def get_recorridos():
+    url = 'https://www.red.cl/restservice_v2/rest/getservicios/all'
+    response = requests.get(url)
+    data = json.loads(response.text)
+    recorridos = data
+    return recorridos
+
+# Función para obtener la información de un recorrido
+def get_recorrido(codsint):
+    quoted_codsint = quote(codsint)
+    url_ida = f'https://www.red.cl/restservice_v2/rest/conocerecorrido?codsint={quoted_codsint}'
+    url_regreso = f'https://www.red.cl/restservice_v2/rest/conocerecorrido?codsint={quoted_codsint}'
+
+    response_ida = requests.get(url_ida)
+    data_ida = json.loads(response_ida.text)
+    path_data_ida = data_ida['ida']['path']
+
+    response_regreso = requests.get(url_regreso)
+    data_regreso = json.loads(response_regreso.text)
+    path_data_regreso = data_regreso['regreso']['path']
+
+    bus_id = str(codsint)  # Convertir a string
+    df_ida = pd.DataFrame({
+        'bus': [bus_id] * len(path_data_ida),
+        'orden': list(range(1, len(path_data_ida) + 1)),
+        'path': [f"{lat},{lon}" for lat, lon in path_data_ida]
+    })
+
+    df_regreso = pd.DataFrame({
+        'bus': [bus_id] * len(path_data_regreso),
+        'orden': list(range(1, len(path_data_regreso) + 1)),
+        'path': [f"{lat},{lon}" for lat, lon in path_data_regreso]
+    })
+
+    # Asegurar que la columna 'bus' sea de tipo string
+    df_ida['bus'] = df_ida['bus'].astype(str)
+    df_regreso['bus'] = df_regreso['bus'].astype(str)
+
+    return df_ida, df_regreso
+
+# Función para subir un archivo al bucket de Google Cloud Storage
+def upload_to_bucket(bucket_name, destination_blob_name, file_content):
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_string(file_content, content_type='text/csv')
+
+# Cloud Function
+@functions_framework.cloud_event
+def main(request):
+    # Obtener los números de recorridos
+    recorridos = get_recorridos()
+
+    # Procesar cada recorrido y guardar en archivos CSV en el bucket
+    for recorrido in recorridos:
+        try:
+            df_ida, df_regreso = get_recorrido(recorrido)
+            filename_ida = f'ruta_{recorrido}_ida.csv'
+            filename_regreso = f'ruta_{recorrido}_regreso.csv'
+
+            # Convertir DataFrame a CSV
+            csv_ida = df_ida.to_csv(index=False)
+            csv_regreso = df_regreso.to_csv(index=False)
+
+            # Subir archivos al bucket
+            upload_to_bucket(bucket_name, filename_ida, csv_ida)
+            upload_to_bucket(bucket_name, filename_regreso, csv_regreso)
+
+            print(f'Archivos {filename_ida} y {filename_regreso} subidos exitosamente al bucket.')
+        except Exception as e:
+            print(f'Error al procesar el recorrido {recorrido}: {e}')
+            continue
+
+    return 'Proceso completado'
